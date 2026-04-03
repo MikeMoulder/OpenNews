@@ -70,7 +70,7 @@ cp .env.example .env
 5. Set required environment variables in `.env`:
 ```
 OG_PRIVATE_KEY=your_opengradient_private_key_here
-ALLOWED_ORIGINS=http://localhost:3000
+ALLOWED_ORIGINS=http://localhost:3000,https://open-news-ai.vercel.app
 ```
 
 ### Frontend Setup
@@ -94,7 +94,7 @@ cp .env.local.example .env.local
 
 4. Configure environment variables if needed:
 ```
-NEXT_PUBLIC_API_URL=http://localhost:8000
+BACKEND_URL=http://localhost:8000
 ```
 
 ## Running the Application
@@ -171,7 +171,68 @@ Analyzes a cryptocurrency news article
 - `ALLOWED_ORIGINS` - CORS allowed origins (default: http://localhost:3000)
 
 **Frontend (.env.local)**
-- `NEXT_PUBLIC_API_URL` - Backend API URL (default: http://localhost:8000)
+- `BACKEND_URL` - Backend API URL used by Next.js server routes (default: http://localhost:8000)
+
+## Deployment Notes (Your Setup)
+
+Frontend (Vercel): `https://open-news-ai.vercel.app`
+Backend (VPS domain): `https://api-rex-backend.ddnsfree.com`
+
+Set these values:
+
+1. Vercel environment variable for frontend project:
+```bash
+BACKEND_URL=https://api-rex-backend.ddnsfree.com
+```
+
+2. Backend `.env` on VPS:
+```bash
+OG_PRIVATE_KEY=your_opengradient_private_key_here
+ALLOWED_ORIGINS=https://open-news-ai.vercel.app
+```
+
+3. Run FastAPI on VPS (bound locally) and reverse proxy with Nginx:
+```bash
+uvicorn main:app --host 127.0.0.1 --port 8000
+```
+
+4. In Nginx for `api-rex-backend.ddnsfree.com`, proxy to `http://127.0.0.1:8000` and enable TLS certificate.
+
+### VPS Setup Commands (Using Included Templates)
+
+Templates are included in:
+- `backend/deploy/opennews-backend.service`
+- `backend/deploy/api-rex-backend.nginx.conf`
+
+On your VPS:
+
+1. Install systemd unit:
+```bash
+sudo cp /home/rex/OpenNews/backend/deploy/opennews-backend.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now opennews-backend
+sudo systemctl status opennews-backend
+```
+
+2. Install Nginx site config:
+```bash
+sudo cp /home/rex/OpenNews/backend/deploy/api-rex-backend.nginx.conf /etc/nginx/sites-available/api-rex-backend
+sudo ln -sf /etc/nginx/sites-available/api-rex-backend /etc/nginx/sites-enabled/api-rex-backend
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+3. Issue TLS cert (if not already issued):
+```bash
+sudo certbot --nginx -d api-rex-backend.ddnsfree.com
+```
+
+4. Verify endpoint:
+```bash
+curl -I https://api-rex-backend.ddnsfree.com/api/news
+```
+
+Note: The systemd file assumes your virtualenv is at `/home/rex/OpenNews/backend/venv`. If you use `.venv`, update `ExecStart` accordingly.
 
 ## Development
 

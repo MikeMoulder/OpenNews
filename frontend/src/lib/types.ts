@@ -1,3 +1,5 @@
+export type Sentiment = "bullish" | "bearish" | "neutral";
+
 export interface Article {
   id: number;
   title: string;
@@ -5,6 +7,7 @@ export interface Article {
   source: string;
   published_at: string;
   currencies: string[];
+  sentiment?: Sentiment;
   votes: {
     negative?: number;
     positive?: number;

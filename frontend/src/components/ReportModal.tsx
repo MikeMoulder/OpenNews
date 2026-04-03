@@ -189,9 +189,13 @@ export default function ReportModal({ report, onClose }: Props) {
         <div className="px-5 py-3 border-t border-[var(--border)] bg-zinc-50 dark:bg-[#0a0a0a]">
           <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 font-mono text-[11px]">
             <span className="text-[var(--text-muted)] uppercase tracking-wider">Hash</span>
-            <span className="text-[var(--text-secondary)] truncate" title={receipt.payment_hash}>
-              {receipt.payment_hash}
-            </span>
+            {receipt.payment_hash && receipt.payment_hash !== "pending settlement" ? (
+              <span className="text-[var(--text-secondary)] truncate" title={receipt.payment_hash}>
+                {receipt.payment_hash}
+              </span>
+            ) : (
+              <span className="text-[var(--accent-amber)] italic">pending settlement...</span>
+            )}
             <span className="text-[var(--text-muted)] uppercase tracking-wider">Model</span>
             <span className="text-[var(--text-secondary)]">{receipt.model}</span>
             <span className="text-[var(--text-muted)] uppercase tracking-wider">Settlement</span>

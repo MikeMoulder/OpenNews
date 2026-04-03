@@ -24,7 +24,11 @@ logging.getLogger("opengradient").setLevel(logging.DEBUG)
 
 app = FastAPI(title="OpenNews API")
 
-ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+_allowed_origins_env = os.environ.get(
+    "ALLOWED_ORIGINS",
+    "http://localhost:3000,https://open-news-ai.vercel.app",
+)
+ALLOWED_ORIGINS = [origin.strip() for origin in _allowed_origins_env.split(",") if origin.strip()]
 
 app.add_middleware(
     CORSMiddleware,
@@ -77,6 +81,34 @@ _CRYPTO_TICKERS = {
 }
 
 
+_BULLISH_KEYWORDS = {
+    "surge", "surges", "surging", "rally", "rallies", "rallying", "jump", "jumps",
+    "soar", "soars", "soaring", "gain", "gains", "bullish", "breakout", "pump",
+    "moon", "mooning", "ath", "all-time high", "record high", "boom", "booming",
+    "uptick", "uptrend", "green", "recover", "recovery", "rebound", "spike",
+}
+_BEARISH_KEYWORDS = {
+    "crash", "crashes", "crashing", "plunge", "plunges", "plunging", "dump",
+    "dumps", "dumping", "drop", "drops", "dropping", "fall", "falls", "falling",
+    "bearish", "sell-off", "selloff", "decline", "declining", "dip", "tank",
+    "tanks", "tanking", "slump", "red", "low", "fear", "panic", "liquidat",
+    "bust", "downturn", "downtrend", "collapse",
+}
+
+
+def _classify_sentiment(title: str) -> str:
+    """Classify an article as bullish, bearish, or neutral based on title keywords."""
+    words = set(re.split(r"[\s,.:;!?$()'\"-]+", title.lower()))
+    title_lower = title.lower()
+    bull_score = sum(1 for kw in _BULLISH_KEYWORDS if kw in words or kw in title_lower)
+    bear_score = sum(1 for kw in _BEARISH_KEYWORDS if kw in words or kw in title_lower)
+    if bull_score > bear_score:
+        return "bullish"
+    if bear_score > bull_score:
+        return "bearish"
+    return "neutral"
+
+
 def _extract_currencies(entry: dict) -> list[str]:
     """Pull crypto tickers from RSS entry tags/categories."""
     tags = entry.get("tags", [])
@@ -123,13 +155,15 @@ async def _fetch_feed(client: httpx.AsyncClient, name: str, url: str) -> list[di
     feed = feedparser.parse(resp.text)
     articles = []
     for entry in feed.entries:
+        title = entry.get("title", "")
         articles.append({
             "id": hash(entry.get("id", entry.get("link", ""))) & 0x7FFFFFFF,
-            "title": entry.get("title", ""),
+            "title": title,
             "url": entry.get("link", ""),
             "source": name,
             "published_at": _parse_pub_date(entry),
             "currencies": _extract_currencies(entry),
+            "sentiment": _classify_sentiment(title),
             "votes": {},
         })
     return articles
@@ -154,6 +188,15 @@ async def get_news(filter: str = "hot", currencies: Optional[str] = None):
 
     # Sort by published_at descending (newest first)
     articles.sort(key=lambda a: a["published_at"], reverse=True)
+
+    # Apply filter
+    if filter == "bullish":
+        articles = [a for a in articles if a["sentiment"] == "bullish"]
+    elif filter == "bearish":
+        articles = [a for a in articles if a["sentiment"] == "bearish"]
+    elif filter == "rising":
+        # Rising: articles with detected crypto tickers (active market mentions)
+        articles = [a for a in articles if a["currencies"]]
 
     # Filter by currency if requested
     if currencies:
@@ -198,10 +241,12 @@ async def generate_report(req: ReportRequest):
     except json.JSONDecodeError:
         raise HTTPException(status_code=500, detail="LLM returned malformed JSON")
 
+    payment_hash = getattr(result, "payment_hash", None) or "pending settlement"
+
     response = {
         "report": report_data,
         "receipt": {
-            "payment_hash": result.payment_hash,
+            "payment_hash": payment_hash,
             "model": "openai/gpt-4.1-2025-04-14",
             "settlement": "INDIVIDUAL_FULL",
             "url_hash": url_hash,
